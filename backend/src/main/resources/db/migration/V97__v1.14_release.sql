@@ -62,14 +62,16 @@ DELIMITER ;
 CALL test_cursor();
 DROP PROCEDURE IF EXISTS test_cursor;
 
-create table if not exists relationship_edge (
-    source_id varchar(50) not null comment '源节点的ID',
-    target_id varchar(50) not null comment '目标节点的ID',
-    relationship_type varchar(20) not null comment '关系的类型，前置后置或者依赖',
-    resource_type varchar(20) not null comment '是表示什么资源',
-    graph_id  varchar(50) not null comment '所属关系图的ID',
-    creator varchar(50) not null comment '创建人',
-    create_time bigint(13) not null,
+
+CREATE TABLE IF NOT EXISTS relationship_edge
+(
+    source_id         varchar(50) NOT NULL COMMENT '源节点的ID',
+    target_id         varchar(50) NOT NULL COMMENT '目标节点的ID',
+    relationship_type varchar(20) NOT NULL COMMENT '关系的类型，前置后置或者依赖',
+    resource_type     varchar(20) NOT NULL COMMENT '是表示什么资源',
+    graph_id          varchar(50) NOT NULL COMMENT '所属关系图的ID',
+    creator           varchar(50) NOT NULL COMMENT '创建人',
+    create_time       bigint(13)  NOT NULL,
     PRIMARY KEY (source_id, target_id)
 )
     ENGINE = InnoDB
@@ -160,3 +162,81 @@ DELIMITER ;
 
 CALL test_cursor();
 DROP PROCEDURE IF EXISTS test_cursor;
+--
+ALTER TABLE message_task
+    ADD workspace_id VARCHAR(64) NULL;
+
+-- 消息通知去掉组织
+
+
+DROP PROCEDURE IF EXISTS test_cursor;
+DELIMITER //
+CREATE PROCEDURE test_cursor()
+BEGIN
+    DECLARE userId VARCHAR(64);
+    DECLARE testId VARCHAR(64);
+    DECLARE type VARCHAR(64);
+    DECLARE event VARCHAR(64);
+    DECLARE taskType VARCHAR(64);
+    DECLARE webhook VARCHAR(255);
+    DECLARE identification VARCHAR(64);
+    DECLARE isSet VARCHAR(64);
+    DECLARE organizationId VARCHAR(64);
+    DECLARE createTime BIGINT;
+    DECLARE template TEXT;
+
+    DECLARE done INT DEFAULT 0;
+    # 必须用 table_name.column_name
+    DECLARE cursor1 CURSOR FOR SELECT message_task.type,
+                                      message_task.event,
+                                      message_task.user_id,
+                                      message_task.task_type,
+                                      message_task.webhook,
+                                      message_task.identification,
+                                      message_task.is_set,
+                                      message_task.organization_id,
+                                      message_task.test_id,
+                                      message_task.create_time,
+                                      message_task.template
+                               FROM message_task;
+
+
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+    OPEN cursor1;
+    outer_loop:
+    LOOP
+        FETCH cursor1 INTO type, event, userId, taskType, webhook, identification, isSet,
+            organizationId,
+            testId, createTime, template;
+        IF done
+        THEN
+            LEAVE outer_loop;
+        END IF;
+        INSERT INTO message_task(id, type, event, user_id, task_type, webhook, identification, is_set, workspace_id,
+                                 test_id, create_time, template)
+        SELECT UUID(),
+               type,
+               event,
+               userId,
+               taskType,
+               webhook,
+               identification,
+               isSet,
+               id,
+               testId,
+               createTime,
+               template
+        FROM workspace
+        WHERE organization_id = organizationId;
+        DELETE FROM message_task WHERE organization_id = organizationId;
+    END LOOP;
+    CLOSE cursor1;
+END
+//
+DELIMITER ;
+
+CALL test_cursor();
+DROP PROCEDURE IF EXISTS test_cursor;
+-- 去掉组织id
+ALTER TABLE message_task
+    DROP COLUMN organization_id;
